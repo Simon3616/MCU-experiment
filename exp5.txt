@@ -1,0 +1,169 @@
+#include<AT89X51.h>
+#include<absacc.h>
+#include<stdio.h>
+//#define adc XBYTE[0xDFF8]
+//#define dac XBYTE[0xEFFF]
+#define uchar unsigned char
+#define uint unsigned int
+#define T0high 0xFE
+#define T0low 0xB7	  //65169~65536,398us
+#define M 600
+#define N 8
+char code dx516[3] _at_ 0x003b;
+uchar xdata *ledadr_tab[]={0x7FF8,0x7FF9,0x7FFA,0x7FFB};
+uchar code tab[]={0xc0,0xf9,0xa4,0xb0,0x99,0x92,0x82,0xf8,0x80,0x90,0x88,0x83,0xc6,0xa1,0x86,0x8e};
+
+
+
+uint data count_t0=0,count_pwm=0,m=0;
+uchar data v_input=0,v_now=0;
+bit ctrl_flag=0;
+
+uchar v_calc(uint n);
+void pid_calc(uchar pid_v_ctrl,uchar pid_v_now);
+void LEDfun(uchar y,uchar x,bit d);
+void show0(uchar x);
+void show1(uchar x);
+void display(void);
+
+struct PID
+{
+	uchar KP;
+	uchar KI;
+	uchar KD;
+}PID1={40,7,2};
+
+void main(void)
+{
+	uint i;
+	//LEDfun(3,0,0);LEDfun(2,0,0);LEDfun(1,0,1);LEDfun(0,0,0);
+	IE=0x8E;//EA=1;EX1=1;ET0=1;ET1=1
+
+	PT0=1;//T0 HIGH
+	PCON=0x00;
+	SCON=0x52;//mode 1;REN=1
+	TMOD=0x21;//T1 mode=2; T0 mode=1
+
+	TH1=0xFD;TL1=0xFD;//9600bps
+	TH0=T0high;TL0=T0low;
+	IT1=1;
+	
+	TR1=1;TR0=1;
+	
+	printf("Please input the command speed!(m/s)\n");
+	scanf("%bd",&v_input);
+	printf("The current command speed is %bd!\n",v_input);
+	P1_5=1;
+	while(1)
+	{	
+		
+		if(P1_0==0)//press SW1 to change v_input
+		{
+			for(i=0;i<2000;++i);
+			if(P1_0==0)
+			{
+				while(P1_0==0);
+				printf("Please input the command speed!(m/s)\n");	
+				scanf("%bd",&v_input);
+				printf("The current command speed is %bd!\n",v_input);
+			}
+		}
+		
+				
+
+
+		if(ctrl_flag==1){pid_calc(v_input,v_now);ctrl_flag=0;}//calc m
+	}
+}
+
+void show0(uchar x)//low0~1
+{
+	LEDfun(1,(x/10)%10,0);
+	LEDfun(0,x%10,0);
+}
+void show1(uchar x)//high2~3
+{
+	LEDfun(3,(x/10)%10,0);
+	LEDfun(2,x%10,0);
+}
+
+void display(void)
+{	
+	show0(v_now);
+	show1(v_input);
+}
+
+void LEDfun(uchar y,uchar x,bit d)  //共阳极	  d=1表示需要小数点
+{
+	uchar xdata *led_adr;
+	uint dd;
+	if(d==1)
+	{
+		dd=0x7F;
+	}
+	else
+	{
+		dd=0xFF;
+	}
+	led_adr=ledadr_tab[y];
+	*led_adr=tab[x]&dd;	
+}
+
+void INT1_int(void) interrupt 2
+{
+	
+	ET0=1;
+	v_now=v_calc(count_t0);
+	
+	//display();
+	count_t0=0;
+}
+
+void T0_int(void) interrupt 1
+{
+ 	if(v_input!=0)
+	{	
+		count_t0++;
+		count_pwm++;
+		if(count_pwm<m){P1_5=1;}
+		else{P1_5=0;}
+		if(count_pwm==M){
+		count_pwm=0;P1_5=1;
+		//pid_calc(v_input,v_now);
+		ctrl_flag=1;
+		}
+			
+	}
+	TH0=T0high;TL0=T0low;
+}
+
+void T1_int(void) interrupt 3
+{
+	
+}
+
+
+uchar v_calc(uint n)
+{
+	return 2500/n;
+}
+
+void pid_calc(uchar pid_v_ctrl,uchar pid_v_now)
+{
+	static int err0=0,err1=0,err2=0;
+	uint p,i,d;
+	err0=pid_v_ctrl-pid_v_now;
+
+	p=err0-err1;
+	i=err0;
+	d=err0-2*err1+err2;
+
+	m+=PID1.KP*p+PID1.KI*i+PID1.KD*d;  
+
+	err2=err1;err1=err0;
+	if(m<0){m=0;}
+	else if(m>M){m=M;}
+	printf("m=%d,v_now=%bd\n",m,v_now);
+	display();
+}
+
