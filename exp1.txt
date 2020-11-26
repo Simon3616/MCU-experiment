@@ -1,0 +1,93 @@
+#include<AT89X51.h>
+#include<absacc.h>
+#define LED0 XBYTE[0x7FF8]
+#define LED1 XBYTE[0x7FF9]
+#define LED2 XBYTE[0x7FFA]
+#define LED3 XBYTE[0x7FFB]
+#define uchar unsigned char
+#define uint unsigned int
+
+uchar data time;
+uchar data bk;
+void LEDfun(uchar y,uchar x);
+void main(void)
+{
+	uint i;
+	time=25.0;
+	P1_5=0;
+	TMOD=0x01;//T0,MODE1
+	IE=0x82;//EA=1,ET0=1
+	TH0=0xF7;
+	TL0=0x10;//63232~65536,2.5ms
+	TR0=1;//start T0
+	bk=time/5;//半周期长bk个2.5秒
+	LEDfun(3,0);
+	LEDfun(2,0);
+	LEDfun(1,2);
+	LEDfun(0,5);
+	while(1)
+	{
+		P1_0=1;P1_1=1;//set P1.0/1 mode:input
+		if(P1_0==0||P1_1==0) //有按键
+		{
+			for(i=0;i<10000;i++){};	//延时
+			if(P1_0==0)			  //P1.0为输入
+			{
+				if(time<50){time=time+5;}
+				else{time=5;}
+				while(P1_0==0);//等待键盘释放
+			}
+			else if(P1_1==0)	 //P1.1为输入
+			{
+				if(time>5){time=time-5;}
+				else{time=50;}
+				while(P1_1==0);//等待键盘释放
+			}
+			else				//实际无输入，为跳动
+			{
+				continue;
+			}
+			bk=time/5;	//reset bk
+			LEDfun(1,time/10);//十位
+			LEDfun(0,time%10);//个位
+		}		
+	}
+}
+
+void T0_int(void) interrupt 1
+{
+	TH0=0xEE;
+	TL0=0x10;
+	bk--;
+	if(bk==0)
+	{
+		P1_5=!P1_5;
+	}
+}
+
+void LEDfun(uchar y,uchar x)  //共阳极
+{
+	uchar xdata *led_adr;             //选择第几个数码管亮
+	switch(y)
+	{
+	case 0:{led_adr=&LED0;break;}
+	case 1:{led_adr=&LED1;break;}
+	case 2:{led_adr=&LED2;break;}
+	case 3:{led_adr=&LED3;break;}
+	default:{break;}
+	}
+	switch(x)
+	{
+		case 0:{*led_adr=0xC0;break;}    //选择数码管亮的数字
+		case 1:{*led_adr=0xF9;break;}
+		case 2:{*led_adr=0xA4;break;}
+		case 3:{*led_adr=0xB0;break;}
+		case 4:{*led_adr=0x99;break;}
+		case 5:{*led_adr=0x92;break;}
+		case 6:{*led_adr=0x82;break;}
+		case 7:{*led_adr=0xF8;break;}
+		case 8:{*led_adr=0x80;break;}
+		case 9:{*led_adr=0x90;break;}
+		default:{*led_adr=0xFF;break;}//灭
+	}		
+}
